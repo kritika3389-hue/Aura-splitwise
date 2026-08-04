@@ -1,0 +1,85 @@
+{
+  "totalBudget": 50000,
+  "expenses": [
+    {
+      "id": "1785583555191",
+      "name": "Cat",
+      "amount": 5000
+    },
+    {
+      "id": "1785583585230",
+      "name": "Dog",
+      "amount": 6000
+    },
+    {
+      "id": "1785738611363",
+      "name": "amazon parcel",
+      "amount": 3000
+    }
+  ],
+  "trips": {
+    "members": [
+      "kritika",
+      "yash",
+      "ram",
+      "garima"
+    ],
+    "expenses": [
+      {
+        "id": "1785755651958",
+        "description": "gifts",
+        "amount": 2000,
+        "paidBy": "kritika"
+      }
+    ]
+  },
+  "splitwiseTrips": [
+    {
+      "id": "1785756868851",
+      "name": "kodaikananl",
+      "members": [
+        "yash",
+        "frahaan",
+        "kriti"
+      ],
+      "expenses": [],
+      "historicalTotal": 3200,
+      "isSettled": true
+    },
+    {
+      "id": "1785757038460",
+      "name": "goa",
+      "members": [
+        "garima",
+        "kritika"
+      ],
+      "expenses": [
+        {
+          "id": "1785849721864",
+          "description": "drink",
+          "amount": 1200,
+          "paidBy": "garima"
+        },
+        {
+          "id": "1785849738834",
+          "description": "taxi",
+          "amount": 1500,
+          "paidBy": "kritika"
+        }
+      ],
+      "historicalTotal": 2700,
+      "isSettled": true
+    },
+    {
+      "id": "1785759624655",
+      "name": "goa",
+      "members": [
+        "alice",
+        "rama"
+      ],
+      "expenses": [],
+      "historicalTotal": 700,
+      "isSettled": true
+    }
+  ]
+}
