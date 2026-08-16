@@ -314,4 +314,46 @@
   .login-right {
     display: none;
   }
+
+  .login-left {
+    padding: 5rem 2.5rem 3rem;
+    max-width: 100%;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .login-left {
+    padding: 4.5rem 1.25rem 2rem;
+  }
+
+  .back-btn-split {
+    top: 1rem;
+    left: 1rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .login-header h2 {
+    font-size: 1.85rem;
+  }
+
+  .login-header p {
+    font-size: 0.9rem;
+  }
+
+  .login-form-wrapper {
+    gap: 1.5rem;
+  }
+
+  .form-group input {
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  .form-options {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
 }

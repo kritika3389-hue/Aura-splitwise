@@ -85,7 +85,8 @@
 .calc-results {
   flex: 1;
   min-width: 300px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: linear-gradient(135deg, #0A192F, #1E293B);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   padding: 2.5rem;
   color: white;
@@ -93,6 +94,11 @@
   flex-direction: column;
   justify-content: center;
   box-shadow: var(--shadow-lg);
+}
+
+[data-theme="dark"] .calc-results {
+  background: linear-gradient(135deg, #1E293B, #0F172A);
+  border: 1px solid rgba(212, 175, 55, 0.3);
 }
 
 .result-item {
@@ -158,7 +164,7 @@
 
 .expense-item:hover {
   transform: translateX(4px);
-  border-color: var(--primary);
+  border-color: var(--secondary);
 }
 
 .expense-item-name {
@@ -167,23 +173,50 @@
 }
 
 .expense-item-amount {
-  font-weight: 600;
-  color: var(--primary);
+  font-weight: 700;
+  color: var(--secondary);
 }
 
 .btn-add {
   margin-top: 0.5rem;
   background: var(--surface);
-  color: var(--primary);
-  border: 1px solid var(--primary);
+  color: var(--text-main);
+  border: 1.5px solid var(--secondary);
   padding: 0.75rem;
   border-radius: 12px;
   font-weight: 600;
+  cursor: pointer;
   transition: all 0.3s;
 }
 
 .btn-add:hover {
-  background: var(--primary);
-  color: white;
+  background: var(--secondary);
+  color: #0A192F;
   box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 768px) {
+  .calculator-card {
+    padding: 1.25rem;
+    gap: 1.5rem;
+    border-radius: 16px;
+  }
+
+  .calc-inputs {
+    min-width: 100%;
+  }
+
+  .calc-results {
+    min-width: 100%;
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
+
+  .result-value {
+    font-size: 2.25rem;
+  }
+
+  .result-item {
+    margin-bottom: 1.25rem;
+  }
 }

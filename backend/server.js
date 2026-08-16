@@ -20,7 +20,7 @@ async function readDB() {
   } catch (error) {
     if (error.code === 'ENOENT') {
       // If file doesn't exist, create it with default structure
-      const defaultData = { totalBudget: 50000, expenses: [], trips: { members: [], expenses: [] } };
+      const defaultData = { totalBudget: 50000, monthlyBudgets: {}, expenses: [], trips: { members: [], expenses: [] } };
       // Ensure the 'db' directory exists
       await fs.mkdir(path.dirname(dbPath), { recursive: true });
       await writeDB(defaultData);
@@ -53,16 +53,24 @@ app.get('/api/budget', async (req, res) => {
 
 // POST: Update total budget
 app.post('/api/budget', async (req, res) => {
-  const { totalBudget } = req.body;
+  const { totalBudget, month } = req.body;
   if (totalBudget === undefined) {
     return res.status(400).json({ error: 'Total budget is required' });
   }
 
   try {
     const data = await readDB();
-    data.totalBudget = Number(totalBudget);
+    if (!data.monthlyBudgets) data.monthlyBudgets = {};
+    
+    const numBudget = Number(totalBudget);
+    if (month) {
+      data.monthlyBudgets[month] = numBudget;
+    }
+    // Update the fallback global budget
+    data.totalBudget = numBudget;
+    
     await writeDB(data);
-    res.json({ message: 'Budget updated successfully' });
+    res.json({ message: 'Budget updated successfully', monthlyBudgets: data.monthlyBudgets });
   } catch (err) {
     console.error('Error updating budget:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -199,10 +207,23 @@ app.get('/api/splitwise', async (req, res) => {
 
 // POST: Create a new trip
 app.post('/api/splitwise', async (req, res) => {
-  const { name } = req.body;
+  const { name, date } = req.body;
   if (!name) return res.status(400).json({ error: 'Trip name is required' });
 
-  const newTrip = { id: Date.now().toString(), name, members: [], expenses: [] };
+  const formattedDate = date ? date : new Date().toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  const newTrip = { 
+    id: Date.now().toString(), 
+    name, 
+    date: formattedDate,
+    createdAt: new Date().toISOString(),
+    members: [], 
+    expenses: [] 
+  };
   try {
     const data = await readDB();
     if (!data.splitwiseTrips) data.splitwiseTrips = [];
@@ -319,6 +340,43 @@ app.delete('/api/splitwise/:tripId/expenses/:expId', async (req, res) => {
     res.json({ message: 'Trip expense deleted successfully', historicalTotal: trip.historicalTotal });
   } catch (err) {
     console.error('Error deleting trip expense:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE: Clear all data
+app.delete('/api/clear', async (req, res) => {
+  try {
+    const defaultData = { totalBudget: 50000, monthlyBudgets: {}, expenses: [], trips: { members: [], expenses: [] }, splitwiseTrips: [], settings: { theme: 'light', notifications: false, currency: 'INR' } };
+    await writeDB(defaultData);
+    res.json({ message: 'All data cleared successfully' });
+  } catch (err) {
+    console.error('Error clearing data:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET: Fetch settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const data = await readDB();
+    res.json(data.settings || { theme: 'light', notifications: false, currency: 'INR' });
+  } catch (err) {
+    console.error('Error fetching settings:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST: Update settings
+app.post('/api/settings', async (req, res) => {
+  const settings = req.body;
+  try {
+    const data = await readDB();
+    data.settings = { ...data.settings, ...settings };
+    await writeDB(data);
+    res.json(data.settings);
+  } catch (err) {
+    console.error('Error updating settings:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

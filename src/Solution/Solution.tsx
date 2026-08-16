@@ -1,4 +1,4 @@
-import React from 'react';
+
 import './Solution.css';
 import { motion } from 'framer-motion';
 
@@ -66,11 +66,6 @@ export default function Solution() {
                 <h3>{card.title}</h3>
                 <p>{card.description}</p>
               </div>
-              {card.content && (
-                <div className="card-bottom">
-                  {card.content}
-                </div>
-              )}
             </motion.div>
           ))}
         </div>

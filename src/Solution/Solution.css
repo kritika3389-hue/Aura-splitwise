@@ -129,3 +129,26 @@
   border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
 }
+
+@media (max-width: 768px) {
+  .solutions-section {
+    padding: 3.5rem 1rem;
+  }
+
+  .solutions-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .solutions-header h2 {
+    font-size: 2rem;
+  }
+
+  .solutions-grid {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .solution-card {
+    padding: 1.5rem;
+  }
+}

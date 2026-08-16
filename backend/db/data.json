@@ -1,20 +1,10 @@
 {
-  "totalBudget": 50000,
+  "totalBudget": 4000,
   "expenses": [
     {
-      "id": "1785583555191",
-      "name": "Cat",
-      "amount": 5000
-    },
-    {
-      "id": "1785583585230",
-      "name": "Dog",
-      "amount": 6000
-    },
-    {
-      "id": "1785738611363",
-      "name": "amazon parcel",
-      "amount": 3000
+      "id": "1786013156237",
+      "name": "tea",
+      "amount": 20
     }
   ],
   "trips": {
@@ -37,6 +27,8 @@
     {
       "id": "1785756868851",
       "name": "kodaikananl",
+      "date": "Aug 14, 2026",
+      "createdAt": "2026-08-14T10:00:00.000Z",
       "members": [
         "yash",
         "frahaan",
@@ -49,6 +41,8 @@
     {
       "id": "1785757038460",
       "name": "goa",
+      "date": "Aug 14, 2026",
+      "createdAt": "2026-08-14T11:00:00.000Z",
       "members": [
         "garima",
         "kritika"
@@ -73,6 +67,8 @@
     {
       "id": "1785759624655",
       "name": "goa",
+      "date": "Aug 14, 2026",
+      "createdAt": "2026-08-14T12:00:00.000Z",
       "members": [
         "alice",
         "rama"
@@ -80,6 +76,42 @@
       "expenses": [],
       "historicalTotal": 700,
       "isSettled": true
+    },
+    {
+      "id": "1786164691607",
+      "name": "doon",
+      "date": "Aug 16, 2026",
+      "createdAt": "2026-08-16T08:00:00.000Z",
+      "members": [
+        "charitha",
+        "kritika",
+        "yash",
+        "bhangi"
+      ],
+      "expenses": [
+        {
+          "id": "1786164778862",
+          "description": "food",
+          "amount": 150,
+          "paidBy": "yash"
+        },
+        {
+          "id": "1786164836838",
+          "description": "tea",
+          "amount": 80,
+          "paidBy": "kritika"
+        },
+        {
+          "id": "1786164847962",
+          "description": "taxi",
+          "amount": 2500,
+          "paidBy": "kritika"
+        }
+      ],
+      "historicalTotal": 2730
     }
-  ]
+  ],
+  "settings": {
+    "theme": "dark"
+  }
 }

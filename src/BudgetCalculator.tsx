@@ -7,9 +7,10 @@ interface BudgetCalculatorProps {
   setTotalBudget: (val: string) => void;
   expenses: Expense[];
   setExpenses: (val: Expense[]) => void;
+  selectedMonth?: string;
 }
 
-export default function BudgetCalculator({ totalBudget, setTotalBudget, expenses, setExpenses }: BudgetCalculatorProps) {
+export default function BudgetCalculator({ totalBudget, setTotalBudget, expenses, setExpenses, selectedMonth }: BudgetCalculatorProps) {
   const [expenseName, setExpenseName] = useState<string>('');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
 
@@ -43,7 +44,7 @@ export default function BudgetCalculator({ totalBudget, setTotalBudget, expenses
       await fetch('http://localhost:5000/api/budget', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totalBudget: parseFloat(totalBudget) || 0 })
+        body: JSON.stringify({ totalBudget: parseFloat(totalBudget) || 0, month: selectedMonth })
       });
     } catch (err) {
       console.error('Failed to update budget:', err);
@@ -68,7 +69,7 @@ export default function BudgetCalculator({ totalBudget, setTotalBudget, expenses
       <div className="calculator-card">
         <div className="calc-inputs">
           <div className="input-group">
-            <label>Total Monthly Budget</label>
+            <label>Total Budget for {selectedMonth || 'Current Month'}</label>
             <div className="input-wrapper">
               <span className="currency-symbol">₹</span>
               <input 

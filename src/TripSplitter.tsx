@@ -6,11 +6,14 @@ interface TripExpense {
   description: string;
   amount: number;
   paidBy: string;
+  date?: string;
 }
 
 export interface SplitwiseTrip {
   id: string;
   name: string;
+  date?: string;
+  createdAt?: string;
   members: string[];
   expenses: TripExpense[];
   isSettled?: boolean;
@@ -22,9 +25,37 @@ interface TripSplitterProps {
   setSplitwiseTrips: (t: SplitwiseTrip[]) => void;
 }
 
+export const formatTripDate = (trip: SplitwiseTrip): string => {
+  if (trip.date) return trip.date;
+  if (trip.createdAt) {
+    return new Date(trip.createdAt).toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+  const timestamp = Number(trip.id);
+  if (!isNaN(timestamp) && timestamp > 1000000000000) {
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+  return new Date().toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: TripSplitterProps) {
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState('');
+  
+  // Format default today as YYYY-MM-DD for date input
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [newTripDate, setNewTripDate] = useState(todayStr);
 
   const activeTrip = splitwiseTrips.find(t => t.id === activeTripId);
   const members = activeTrip?.members || [];
@@ -40,17 +71,32 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
 
   const handleCreateTrip = async () => {
     if (!newTripName.trim()) return;
+    
+    // Format chosen date
+    let formattedDate = '';
+    if (newTripDate) {
+      const parts = newTripDate.split('-');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        formattedDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    }
+
     try {
       const res = await fetch('http://localhost:5000/api/splitwise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newTripName.trim() })
+        body: JSON.stringify({ 
+          name: newTripName.trim(),
+          date: formattedDate || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+        })
       });
       if (res.ok) {
         const newTrip = await res.json();
         setSplitwiseTrips([...splitwiseTrips, newTrip]);
         setActiveTripId(newTrip.id);
         setNewTripName('');
+        setNewTripDate(todayStr);
       }
     } catch (err) {
       console.error('Failed to create trip:', err);
@@ -192,11 +238,12 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
         <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
           
           <div className="dashboard-card glass-card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '0.5rem' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '0.25rem' }}>
               <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
             <h3 style={{ margin: 0 }}>Create New Trip</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: '0.5rem' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', marginTop: '0.5rem' }}>
               <input 
                 type="text" 
                 className="ts-input" 
@@ -204,15 +251,27 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
                 value={newTripName} 
                 onChange={(e) => setNewTripName(e.target.value)} 
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateTrip()}
-                style={{ flex: 1 }}
               />
-              <button className="ts-btn-primary" onClick={handleCreateTrip}>Create</button>
+              
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="date" 
+                  className="ts-input" 
+                  value={newTripDate} 
+                  onChange={(e) => setNewTripDate(e.target.value)} 
+                  title="Trip Creation Date"
+                  style={{ flex: 1, color: 'var(--text-main)' }}
+                />
+                <button className="ts-btn-primary" onClick={handleCreateTrip}>Create</button>
+              </div>
             </div>
           </div>
 
           {splitwiseTrips.map(trip => {
             const currentExpensesTotal = trip.expenses.reduce((a, b) => a + b.amount, 0);
             const tripTotal = trip.historicalTotal !== undefined ? Math.max(trip.historicalTotal, currentExpensesTotal) : currentExpensesTotal;
+            const tripFormattedDate = formatTripDate(trip);
+
             return (
               <div 
                 key={trip.id} 
@@ -227,7 +286,8 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
                     Settled
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: trip.isSettled ? '0.5rem' : '0' }}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', marginTop: trip.isSettled ? '0.5rem' : '0' }}>
                   <h3 style={{ margin: 0, fontSize: '1.25rem' }}>{trip.name}</h3>
                   {!trip.isSettled && (
                     <div style={{ background: 'var(--surface)', padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)' }}>
@@ -235,6 +295,13 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
                     </div>
                   )}
                 </div>
+
+                {/* Date Display Badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <span>{tripFormattedDate}</span>
+                </div>
+
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
                   ₹{tripTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
@@ -273,9 +340,11 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
     });
   }
 
+  const activeTripFormattedDate = formatTripDate(activeTrip);
+
   return (
     <div className="trip-splitter" style={{ animation: 'fadeIn 0.5s ease-out' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
+      <div className="ts-active-header">
         <div>
           <button 
             onClick={() => setActiveTripId(null)}
@@ -284,11 +353,30 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '-5px' }}><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Back to Trips
           </button>
-          <h2 style={{ margin: 0, fontSize: '2rem', letterSpacing: '-0.5px', color: 'var(--text-main)' }}>{activeTrip.name}</h2>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: '2rem', letterSpacing: '-0.5px', color: 'var(--text-main)' }}>{activeTrip.name}</h2>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: 'rgba(99, 102, 241, 0.1)',
+              color: 'var(--primary)',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              padding: '0.35rem 0.85rem',
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              fontWeight: 600
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Created on {activeTripFormattedDate}</span>
+            </div>
+          </div>
+
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', fontSize: '1.05rem' }}>Manage members and expenses for this trip.</p>
         </div>
         {activeTrip.isSettled ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <div style={{ background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '0.75rem 1.5rem', borderRadius: '12px', fontWeight: 600, border: '1px solid rgba(74, 222, 128, 0.2)' }}>
               ✓ Trip Settled
             </div>
@@ -303,7 +391,7 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
         )}
       </div>
 
-      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2.5rem' }}>
+      <div className="ts-detail-grid">
         
         {/* Left Column: Inputs */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
