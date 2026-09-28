@@ -14,10 +14,11 @@ export interface Expense {
 
 interface DashboardProps {
   onLogout: () => void;
+  initialTripId?: string | null;
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'budget' | 'analytics' | 'trips' | 'settings'>('overview');
+export default function Dashboard({ onLogout, initialTripId }: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'budget' | 'analytics' | 'trips' | 'settings'>(initialTripId ? 'trips' : 'overview');
 
   // Real data state
   const [totalBudget, setTotalBudget] = useState<string>('');
@@ -41,6 +42,47 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Notifications State
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchAllLive = () => {
+      // 1. Fetch Notifications
+      fetch(`http://localhost:5000/api/notifications/${encodeURIComponent(userName)}`)
+        .then(res => res.json())
+        .then(data => {
+          setNotifications(prev => {
+            const newData = data || [];
+            if (newData.length > 0 && prev.length > 0) {
+              const latest = newData[0];
+              // If we have a new unseen notification
+              if (latest.id > prev[0].id && !latest.is_read) {
+                setToastMsg(latest.message);
+                setTimeout(() => setToastMsg(null), 6000);
+              }
+            }
+            return newData;
+          });
+        })
+        .catch(err => console.error('Failed to fetch notifications:', err));
+
+      // 2. Fetch Trips live to keep UI updated
+      fetch('http://localhost:5000/api/splitwise')
+        .then(res => res.json())
+        .then(data => {
+          const trips = data || [];
+          const myTrips = trips.filter((t: any) => t.members.includes(userName));
+          setSplitwiseTrips(myTrips);
+        });
+    };
+    fetchAllLive();
+    const interval = setInterval(fetchAllLive, 5000);
+    return () => clearInterval(interval);
+  }, [userName]);
+
   useEffect(() => {
     fetch('http://localhost:5000/api/budget')
       .then(res => res.json())
@@ -50,11 +92,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         setExpenses(data.expenses || []);
       })
       .catch(err => console.error('Failed to fetch data:', err));
-
-    fetch('http://localhost:5000/api/splitwise')
-      .then(res => res.json())
-      .then(data => setSplitwiseTrips(data || []))
-      .catch(err => console.error('Failed to fetch splitwise trips:', err));
   }, []);
 
   // Global Hotkey: ⌘K or Ctrl+K and Escape
@@ -84,10 +121,20 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setIsSearchOpen(false);
       }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setIsNotifOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleMarkRead = async (id: number) => {
+    try {
+      await fetch(`http://localhost:5000/api/notifications/${id}/read`, { method: 'PUT' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
+    } catch (e) {}
+  };
 
   const allTripExpenses = splitwiseTrips.flatMap(t => (t.expenses || []).map((exp: any) => ({ ...exp, tripName: t.name, tripId: t.id })));
   
@@ -166,12 +213,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       )}
 
       <aside className={`sidebar ${isMobileSidebarOpen ? 'sidebar-mobile-open' : ''}`}>
-        <div style={{ padding: '2rem 2rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button onClick={onLogout} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--secondary)', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, transition: 'color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = 'white'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--secondary)'}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '0px' }}><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-            Home
-          </button>
-          
+        <div style={{ padding: '2rem 2rem 0', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           {/* Close button inside mobile sidebar */}
           <button 
             className="mobile-sidebar-close-btn"
@@ -199,44 +241,33 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
           <a href="#" className={`sidebar-link ${activeTab === 'overview' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('overview'); setIsMobileSidebarOpen(false); }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-            <span>Executive Overview</span>
+            <span>Overview</span>
           </a>
           <a href="#" className={`sidebar-link ${activeTab === 'budget' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('budget'); setIsMobileSidebarOpen(false); }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
-            <span>Transaction Intel</span>
+            <span>Transactions</span>
           </a>
           <a href="#" className={`sidebar-link ${activeTab === 'analytics' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('analytics'); setIsMobileSidebarOpen(false); }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
-            <span>Anomaly Hub</span>
+            <span>Anomalies</span>
           </a>
           <a href="#" className={`sidebar-link ${activeTab === 'trips' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('trips'); setIsMobileSidebarOpen(false); }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            <span>Trip Analysis</span>
+            <span>Trips</span>
           </a>
           <a href="#" className={`sidebar-link ${activeTab === 'settings' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('settings'); setIsMobileSidebarOpen(false); }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
             <span>Settings</span>
           </a>
-          <a href="#" className="sidebar-link" onClick={() => setIsMobileSidebarOpen(false)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            <span>Support</span>
-          </a>
+
         </nav>
 
         <div className="sidebar-footer" style={{ marginTop: 'auto', padding: '2rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="storage-card" style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1.25rem', borderRadius: '16px', marginBottom: '1.5rem', border: '1px solid rgba(255, 255, 255, 0.08)', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
-              <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>Local Storage</span>
-              <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>24%</span>
-            </div>
-            <div style={{ width: '100%', height: '5px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '100px', overflow: 'hidden' }}>
-              <div style={{ width: '24%', height: '100%', background: 'linear-gradient(90deg, #A88746, #D4AF37)', borderRadius: '100px' }}></div>
-            </div>
-          </div>
 
-          <button className="btn-logout modern-logout" onClick={onLogout}>
-            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+
+          <button className="btn-logout modern-logout" onClick={onLogout} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', padding: '0.85rem', background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', cursor: 'pointer', fontWeight: 600, transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}>
             <span>Sign Out</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
           </button>
         </div>
       </aside>
@@ -512,7 +543,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             )}
           </div>
           
-          <div className="month-selector" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: '2rem', marginRight: 'auto' }}>
+          <div className="month-selector">
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Period:</span>
             <select 
               value={selectedMonth} 
@@ -528,19 +559,77 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </select>
           </div>
 
-          <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-            <button className="icon-btn" style={{ position: 'relative', color: 'var(--text-muted)', transition: 'color 0.3s' }}>
-              <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-              <span style={{ position: 'absolute', top: '-2px', right: '0px', width: '10px', height: '10px', background: '#ef4444', borderRadius: '50%', border: '2px solid var(--surface)' }}></span>
+          <div className="header-right">
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button 
+                className="icon-btn" 
+                onClick={() => setIsNotifOpen(!isNotifOpen)}
+                style={{ position: 'relative', color: 'var(--text-muted)', transition: 'color 0.3s' }}
+              >
+                <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                {notifications.some(n => !n.is_read) && (
+                  <span style={{ position: 'absolute', top: '-2px', right: '0px', width: '10px', height: '10px', background: '#ef4444', borderRadius: '50%', border: '2px solid var(--surface)' }}></span>
+                )}
+              </button>
+              
+              {isNotifOpen && (
+                <div className="search-dropdown-menu" style={{ width: '320px', right: '-60px', left: 'auto', padding: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Notifications</h3>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }} onClick={() => notifications.filter(n=>!n.is_read).forEach(n => handleMarkRead(n.id))}>Mark all read</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '350px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '1rem 0' }}>No notifications yet!</div>
+                    ) : (
+                      notifications.map(notif => (
+                        <div 
+                          key={notif.id} 
+                          onClick={() => {
+                            if (!notif.is_read) handleMarkRead(notif.id);
+                            if (notif.trip_id) setActiveTab('trips');
+                            setIsNotifOpen(false);
+                          }}
+                          style={{ 
+                            padding: '0.75rem', 
+                            borderRadius: '8px', 
+                            background: notif.is_read ? 'transparent' : 'rgba(99, 102, 241, 0.05)', 
+                            cursor: 'pointer',
+                            display: 'flex',
+                            gap: '0.75rem',
+                            border: notif.is_read ? '1px solid transparent' : '1px solid rgba(99, 102, 241, 0.1)',
+                            transition: 'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-color)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = notif.is_read ? 'transparent' : 'rgba(99, 102, 241, 0.05)'}
+                        >
+                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /></svg>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: notif.is_read ? 500 : 600 }}>{notif.message}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                              {new Date(notif.created_at + 'Z').toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • {new Date(notif.created_at + 'Z').toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="icon-btn mobile-only-logout" onClick={onLogout} style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: '0.4rem', borderRadius: '8px' }} title="Sign Out">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             </button>
-            <div className="user-profile" onClick={() => setActiveTab('settings')} title="View Settings & Profile" style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', paddingLeft: '2rem', borderLeft: '1px solid var(--border)' }}>
+            <div className="user-profile" onClick={() => setActiveTab('settings')} title="View Settings & Profile">
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: '1.2' }}>{userName}</span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--secondary)', fontWeight: 600 }}>Pro Plan</span>
               </div>
               <div className="avatar" style={{ width: '42px', height: '42px', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, var(--primary), var(--secondary))', color: 'white', fontWeight: 700 }}>
                 {userAvatar ? (
-                  <img src={userAvatar} alt={userName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={userAvatar} alt={userName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
                 ) : (
                   userName.charAt(0).toUpperCase()
                 )}
@@ -560,7 +649,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           />
         )}
         {activeTab === 'analytics' && <AnalyticsView totalBudget={activeBudget} expenses={filteredExpenses} tripExpenses={filteredTripExpenses} />}
-        {activeTab === 'trips' && <TripSplitter splitwiseTrips={splitwiseTrips} setSplitwiseTrips={setSplitwiseTrips} />}
+        {activeTab === 'trips' && <TripSplitter splitwiseTrips={splitwiseTrips} setSplitwiseTrips={setSplitwiseTrips} initialTripId={initialTripId} currentUser={userName} />}
         {activeTab === 'settings' && (
           <SettingsView
             userName={userName}
@@ -572,6 +661,72 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           />
         )}
       </main>
+
+      {/* Floating Bottom Navigation Bar */}
+      <nav className="bottom-nav-bar">
+        <div 
+          className={`bottom-nav-item ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => handleSelectNav('overview')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          {activeTab === 'overview' && <span>Overview</span>}
+        </div>
+        <div 
+          className={`bottom-nav-item ${activeTab === 'budget' ? 'active' : ''}`}
+          onClick={() => handleSelectNav('budget')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          {activeTab === 'budget' && <span>Transactions</span>}
+        </div>
+        <div 
+          className={`bottom-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => handleSelectNav('analytics')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          {activeTab === 'analytics' && <span>Anomalies</span>}
+        </div>
+        <div 
+          className={`bottom-nav-item ${activeTab === 'trips' ? 'active' : ''}`}
+          onClick={() => handleSelectNav('trips')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
+          {activeTab === 'trips' && <span>Trips</span>}
+        </div>
+      </nav>
+
+      {/* Floating Toast Notification */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          bottom: '100px',
+          right: '30px',
+          background: 'var(--surface)',
+          color: 'var(--text-main)',
+          padding: '1rem 1.5rem',
+          borderRadius: '12px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+          borderLeft: '4px solid var(--primary)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          zIndex: 9999,
+          animation: 'slideUp 0.3s ease-out forwards'
+        }}>
+          <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            🔔
+          </div>
+          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{toastMsg}</div>
+        </div>
+      )}
+
+      <style>
+        {`
+          @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}
+      </style>
     </div>
   );
 }

@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 import Dashboard from './Dashboard';
-import Login from './Login';
 import Solution from './Solution/Solution';
+import Login from './login/Login';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'login' | 'solution'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'solution' | 'login'>(() => {
+    const hasInvite = new URLSearchParams(window.location.search).has('invite');
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    
+    if (hasInvite) {
+      return isLoggedIn ? 'dashboard' : 'login';
+    }
+    
+    return isLoggedIn ? 'dashboard' : 'landing';
+  });
+  const [inviteCode, setInviteCode] = useState<string | null>(() => {
+    return new URLSearchParams(window.location.search).get('invite');
+  });
   const [scrolled, setScrolled] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authStatusMessage, setAuthStatusMessage] = useState('Signing in with Google...');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -19,102 +29,31 @@ function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Handle Google OAuth Redirect Callback (#access_token=... or ?demo_google_auth=true)
   useEffect(() => {
-    const hash = window.location.hash;
-    const search = window.location.search;
-
-    if (hash && (hash.includes('access_token=') || hash.includes('id_token='))) {
-      const params = new URLSearchParams(hash.substring(1));
-      const accessToken = params.get('access_token');
-      
-      if (accessToken) {
-        setAuthLoading(true);
-        setAuthStatusMessage('Retrieving your Google account profile...');
-
-        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-          .then((res) => {
-            if (!res.ok) throw new Error('Failed to fetch Google profile');
-            return res.json();
-          })
-          .then((userInfo) => {
-            localStorage.setItem('userEmail', userInfo.email || 'user@gmail.com');
-            localStorage.setItem('userName', userInfo.name || 'Google User');
-            if (userInfo.picture) {
-              localStorage.setItem('userAvatar', userInfo.picture);
-            }
-            localStorage.setItem('authProvider', 'google');
-
-            // Clean the URL hash cleanly
-            window.history.replaceState(null, '', window.location.pathname);
-            setCurrentView('dashboard');
-          })
-          .catch((err) => {
-            console.error('Google profile fetch error:', err);
-            alert('Google authentication succeeded, but failed to retrieve user profile.');
-            window.history.replaceState(null, '', window.location.pathname);
-            setCurrentView('dashboard');
-          })
-          .finally(() => {
-            setAuthLoading(false);
-          });
-      }
-    } else if (hash && hash.includes('error=')) {
-      const params = new URLSearchParams(hash.substring(1));
-      const errorReason = params.get('error') || 'OAuth access denied';
-      console.error('Google OAuth error:', errorReason);
-      window.history.replaceState(null, '', window.location.pathname);
-      alert(`Google Sign-In returned an error: ${errorReason}`);
-    } else if (search && search.includes('demo_google_auth=true')) {
-      setAuthLoading(true);
-      setAuthStatusMessage('Processing Google authentication redirect...');
-
-      const timer = setTimeout(() => {
-        const storedName = localStorage.getItem('userName') || 'Google User';
-        const storedEmail = localStorage.getItem('userEmail') || 'user@gmail.com';
-
-        localStorage.setItem('userName', storedName);
-        localStorage.setItem('userEmail', storedEmail);
-        localStorage.setItem('authProvider', 'google');
-
-        window.history.replaceState(null, '', window.location.pathname);
-        setAuthLoading(false);
-        setCurrentView('dashboard');
-      }, 700);
-
-      return () => clearTimeout(timer);
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const userName = localStorage.getItem('userName');
+    
+    if (inviteCode && isLoggedIn && userName) {
+      const joinTrip = async () => {
+        try {
+          const res = await fetch('http://localhost:5000/api/splitwise');
+          const trips = await res.json();
+          const trip = trips.find((t: any) => t.id === inviteCode);
+          if (trip && !trip.members.includes(userName)) {
+            await fetch(`http://localhost:5000/api/splitwise/${inviteCode}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ members: [...trip.members, userName] })
+            });
+          }
+        } catch (e) {
+          console.error("Failed to add user to trip", e);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      };
+      joinTrip();
     }
-  }, []);
-
-  if (authLoading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-color)',
-        color: 'var(--text-main)',
-        gap: '1.5rem'
-      }}>
-        <div style={{
-          width: '54px',
-          height: '54px',
-          border: '4px solid rgba(184, 156, 93, 0.2)',
-          borderTopColor: 'var(--primary)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite'
-        }} />
-        <div style={{ textAlign: 'center' }}>
-          <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{authStatusMessage}</h3>
-          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>Redirecting to your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  }, [inviteCode]);
 
   return (
     <div className="app-container">
@@ -125,9 +64,49 @@ function App() {
       </div>
 
       {currentView === 'dashboard' ? (
-        <Dashboard onLogout={() => setCurrentView('landing')} />
+        <Dashboard 
+          onLogout={() => {
+            localStorage.removeItem('isLoggedIn');
+            setCurrentView('landing');
+          }} 
+          initialTripId={inviteCode} 
+        />
       ) : currentView === 'login' ? (
-        <Login onLogin={() => setCurrentView('dashboard')} onBack={() => setCurrentView('landing')} />
+        <Login 
+          onLogin={async (userInfo) => {
+            if (userInfo) {
+              localStorage.setItem('isLoggedIn', 'true');
+              if (userInfo.name) localStorage.setItem('userName', userInfo.name);
+              if (userInfo.email) localStorage.setItem('userEmail', userInfo.email);
+              if (userInfo.picture) localStorage.setItem('userAvatar', userInfo.picture);
+            }
+
+            if (inviteCode && userInfo?.name) {
+              try {
+                const res = await fetch('http://localhost:5000/api/splitwise');
+                const trips = await res.json();
+                const trip = trips.find((t: any) => t.id === inviteCode);
+                if (trip && !trip.members.includes(userInfo.name)) {
+                  await fetch(`http://localhost:5000/api/splitwise/${inviteCode}/members`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ members: [...trip.members, userInfo.name] })
+                  });
+                }
+              } catch (e) {
+                console.error("Failed to add user to trip", e);
+              }
+              // clear invite from url to keep it clean
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            setCurrentView('dashboard');
+          }} 
+          onBack={() => {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setInviteCode(null);
+            setCurrentView('landing');
+          }} 
+        />
       ) : (
         <>
           {/* Premium Header */}
@@ -149,10 +128,6 @@ function App() {
                 <a href="#" className="nav-item">Pricing</a>
               </nav>
               <div className="header-actions">
-                <a href="#" className="login-link" onClick={(e) => { e.preventDefault(); setCurrentView('login'); }}>Log in</a>
-                <button className="btn-primary btn-sm btn-glow" onClick={() => setCurrentView('dashboard')}>
-                  Go to App <span aria-hidden="true" style={{ marginLeft: '0.25rem' }}>→</span>
-                </button>
               </div>
 
               {/* Mobile Hamburger Button */}
@@ -193,12 +168,6 @@ function App() {
                 </a>
                 <div className="mobile-nav-divider"></div>
                 <div className="mobile-nav-actions">
-                  <a href="#" className="mobile-login-link" onClick={(e) => { e.preventDefault(); setCurrentView('login'); setMobileMenuOpen(false); }}>
-                    Log in
-                  </a>
-                  <button className="btn-primary" style={{ width: '100%', padding: '0.85rem' }} onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}>
-                    Go to App →
-                  </button>
                 </div>
               </div>
             )}
@@ -218,8 +187,10 @@ function App() {
                       platform. We bring your boldest ideas to life with stunning aesthetics.
                     </p>
                     <div className="hero-buttons">
-                      <button className="btn-primary" onClick={() => setCurrentView('dashboard')}>Start Free Trial</button>
-                      <button className="btn-secondary">View Showcase</button>
+                      <button className="btn-primary" onClick={() => {
+                        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+                        setCurrentView(isLoggedIn ? 'dashboard' : 'login');
+                      }}>Start Free Trial</button>
                     </div>
                   </div>
                   <div className="hero-image">

@@ -84,31 +84,22 @@ export default function BudgetCalculator({ totalBudget, setTotalBudget, expenses
 
           <div className="input-group" style={{ marginTop: '1rem' }}>
             <label>Add New Expense</label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="expense-input-row">
               <input 
                 type="text" 
                 value={expenseName} 
                 onChange={(e) => setExpenseName(e.target.value)} 
                 placeholder="Expense name"
-                style={{ 
-                  flex: 2, 
-                  padding: '0.75rem 1rem', 
-                  borderRadius: '12px', 
-                  border: '1px solid var(--border)',
-                  outline: 'none',
-                  background: 'var(--bg-color)',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem'
-                }}
+                className="expense-name-input"
               />
-              <div className="input-wrapper" style={{ flex: 1 }}>
+              <div className="input-wrapper">
                 <span className="currency-symbol">₹</span>
                 <input 
                   type="number" 
                   value={expenseAmount} 
                   onChange={(e) => setExpenseAmount(e.target.value)} 
                   placeholder="Amount"
-                  style={{ padding: '0.75rem 1rem 0.75rem 2rem', fontSize: '1rem' }}
+                  className="expense-amount-input"
                 />
               </div>
             </div>

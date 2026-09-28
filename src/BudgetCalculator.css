@@ -195,9 +195,42 @@
   box-shadow: var(--shadow-sm);
 }
 
+.expense-input-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.expense-name-input {
+  flex: 2;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  outline: none;
+  background: var(--bg-color);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.expense-name-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.expense-input-row .input-wrapper {
+  flex: 1;
+}
+
+.expense-amount-input {
+  padding: 0.75rem 1rem 0.75rem 2.2rem !important;
+  font-size: 1rem !important;
+}
+
 @media (max-width: 768px) {
   .calculator-card {
-    padding: 1.25rem;
+    padding: 1rem;
     gap: 1.5rem;
     border-radius: 16px;
   }
@@ -218,5 +251,10 @@
 
   .result-item {
     margin-bottom: 1.25rem;
+  }
+
+  .expense-input-row {
+    flex-direction: column;
+    gap: 0.75rem;
   }
 }

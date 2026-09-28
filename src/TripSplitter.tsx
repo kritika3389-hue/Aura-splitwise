@@ -23,6 +23,8 @@ export interface SplitwiseTrip {
 interface TripSplitterProps {
   splitwiseTrips: SplitwiseTrip[];
   setSplitwiseTrips: (t: SplitwiseTrip[]) => void;
+  initialTripId?: string | null;
+  currentUser?: string;
 }
 
 export const formatTripDate = (trip: SplitwiseTrip): string => {
@@ -49,16 +51,18 @@ export const formatTripDate = (trip: SplitwiseTrip): string => {
   });
 };
 
-export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: TripSplitterProps) {
-  const [activeTripId, setActiveTripId] = useState<string | null>(null);
+export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips, initialTripId, currentUser }: TripSplitterProps) {
+  const [activeTripId, setActiveTripId] = useState<string | null>(initialTripId || null);
   const [newTripName, setNewTripName] = useState('');
   
   // Format default today as YYYY-MM-DD for date input
   const todayStr = new Date().toISOString().split('T')[0];
   const [newTripDate, setNewTripDate] = useState(todayStr);
 
+  const [isMembersExpanded, setIsMembersExpanded] = useState(window.innerWidth > 900);
+
   const activeTrip = splitwiseTrips.find(t => t.id === activeTripId);
-  const members = activeTrip?.members || [];
+  const members = Array.from(new Set(activeTrip?.members || []));
   const expenses = activeTrip?.expenses || [];
 
   const [newMember, setNewMember] = useState('');
@@ -68,6 +72,10 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
   
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<string>('');
+
+  const [editingSettlementFrom, setEditingSettlementFrom] = useState<string | null>(null);
+  const [editingSettlementTo, setEditingSettlementTo] = useState<string | null>(null);
+  const [settlementAmount, setSettlementAmount] = useState<string>('');
 
   const handleCreateTrip = async () => {
     if (!newTripName.trim()) return;
@@ -93,13 +101,31 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
       });
       if (res.ok) {
         const newTrip = await res.json();
+        
+        // Add creator immediately if known
+        if (currentUser) {
+          try {
+            await fetch(`http://localhost:5000/api/splitwise/${newTrip.id}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ members: [currentUser] })
+            });
+            newTrip.members = [currentUser];
+          } catch (e) {
+            console.error('Failed to add creator as member', e);
+          }
+        }
+        
         setSplitwiseTrips([...splitwiseTrips, newTrip]);
         setActiveTripId(newTrip.id);
         setNewTripName('');
         setNewTripDate(todayStr);
+      } else {
+        alert('Failed to create trip. Please ensure the backend server is running and connected to the database.');
       }
     } catch (err) {
       console.error('Failed to create trip:', err);
+      alert('Could not connect to the backend server (http://localhost:5000). Please ensure it is running.');
     }
   };
 
@@ -128,7 +154,7 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
         const res = await fetch(`http://localhost:5000/api/splitwise/${activeTripId}/expenses`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: desc, amount: parseFloat(amount), paidBy })
+          body: JSON.stringify({ description: desc, amount: parseFloat(amount), paidBy, addedBy: currentUser })
         });
         if (res.ok) {
           const { newExpense, historicalTotal } = await res.json();
@@ -175,21 +201,56 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
   const saveEditedAmount = async (id: string) => {
     if (!editAmount || isNaN(Number(editAmount)) || !activeTripId) return;
     try {
+      const exp = activeTrip?.expenses.find(e => e.id === id);
       const res = await fetch(`http://localhost:5000/api/splitwise/${activeTripId}/expenses/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: parseFloat(editAmount) })
+        body: JSON.stringify({ amount: parseFloat(editAmount), editedBy: currentUser, description: exp?.description })
       });
       if (res.ok) {
-        const updatedExp = await res.json();
+        const { updatedExp, historicalTotal } = await res.json();
         const updatedTrips = splitwiseTrips.map(t => 
-          t.id === activeTripId ? { ...t, expenses: t.expenses.map(e => e.id === id ? updatedExp : e) } : t
+          t.id === activeTripId ? { 
+            ...t, 
+            expenses: t.expenses.map(e => e.id === id ? { ...e, amount: updatedExp.amount } : e),
+            historicalTotal
+          } : t
         );
         setSplitwiseTrips(updatedTrips);
         setEditingExpenseId(null);
       }
     } catch (err) {
       console.error('Failed to update trip expense:', err);
+    }
+  };
+
+  const handleRecordPayment = async (from: string, to: string, amount: number) => {
+    if (!activeTripId || amount <= 0 || isNaN(amount)) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/splitwise/${activeTripId}/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: `➡️ Payment to ${to}`,
+          amount,
+          paidBy: from
+        })
+      });
+      if (res.ok) {
+        const { newExpense, historicalTotal } = await res.json();
+        const updatedTrips = splitwiseTrips.map(t => 
+          t.id === activeTripId ? { 
+            ...t, 
+            expenses: [newExpense, ...t.expenses],
+            historicalTotal 
+          } : t
+        );
+        setSplitwiseTrips(updatedTrips);
+        setEditingSettlementFrom(null);
+        setEditingSettlementTo(null);
+      }
+    } catch (err) {
+      console.error('Failed to record payment:', err);
     }
   };
 
@@ -262,7 +323,17 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
                   title="Trip Creation Date"
                   style={{ flex: 1, color: 'var(--text-main)' }}
                 />
-                <button className="ts-btn-primary" onClick={handleCreateTrip}>Create</button>
+                <button 
+                  className="ts-btn-primary" 
+                  onClick={handleCreateTrip}
+                  disabled={!newTripName.trim()}
+                  style={{ 
+                    opacity: !newTripName.trim() ? 0.5 : 1, 
+                    cursor: !newTripName.trim() ? 'not-allowed' : 'pointer' 
+                  }}
+                >
+                  Create
+                </button>
               </div>
             </div>
           </div>
@@ -320,15 +391,22 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
   const balances: Record<string, number> = {};
   members.forEach(m => balances[m] = 0);
   
-  const currentExpensesTotal = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalSpent = activeTrip.historicalTotal !== undefined ? Math.max(activeTrip.historicalTotal, currentExpensesTotal) : currentExpensesTotal;
-  const perPersonShare = members.length > 0 ? currentExpensesTotal / members.length : 0;
+  let currentSharedExpensesTotal = 0;
 
   expenses.forEach(exp => {
-    if (balances[exp.paidBy] !== undefined) {
-      balances[exp.paidBy] += exp.amount;
+    const isPayment = exp.description?.startsWith('➡️ Payment to ');
+    if (isPayment) {
+      const recipient = exp.description.replace('➡️ Payment to ', '');
+      if (balances[exp.paidBy] !== undefined) balances[exp.paidBy] += exp.amount;
+      if (balances[recipient] !== undefined) balances[recipient] -= exp.amount;
+    } else {
+      if (balances[exp.paidBy] !== undefined) balances[exp.paidBy] += exp.amount;
+      currentSharedExpensesTotal += exp.amount;
     }
   });
+
+  const totalSpent = activeTrip.historicalTotal !== undefined ? Math.max(activeTrip.historicalTotal, currentSharedExpensesTotal) : currentSharedExpensesTotal;
+  const perPersonShare = members.length > 0 ? currentSharedExpensesTotal / members.length : 0;
 
   if (!activeTrip.isSettled) {
     members.forEach(m => {
@@ -338,6 +416,47 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
     members.forEach(m => {
       balances[m] = 0;
     });
+  }
+
+  // Calculate debt simplification (who owes who)
+  const settlementTransactions: {from: string, to: string, amount: number}[] = [];
+  if (!activeTrip.isSettled) {
+    const debtors: {member: string, amount: number}[] = [];
+    const creditors: {member: string, amount: number}[] = [];
+
+    for (const [member, balance] of Object.entries(balances)) {
+      if (balance < -0.01) {
+        debtors.push({ member, amount: -balance });
+      } else if (balance > 0.01) {
+        creditors.push({ member, amount: balance });
+      }
+    }
+
+    debtors.sort((a, b) => b.amount - a.amount);
+    creditors.sort((a, b) => b.amount - a.amount);
+
+    let d = 0;
+    let c = 0;
+    while (d < debtors.length && c < creditors.length) {
+      const debtor = debtors[d];
+      const creditor = creditors[c];
+      
+      const amount = Math.min(debtor.amount, creditor.amount);
+      
+      if (amount > 0.01) {
+        settlementTransactions.push({
+          from: debtor.member,
+          to: creditor.member,
+          amount: amount
+        });
+      }
+
+      debtor.amount -= amount;
+      creditor.amount -= amount;
+
+      if (debtor.amount < 0.01) d++;
+      if (creditor.amount < 0.01) c++;
+    }
   }
 
   const activeTripFormattedDate = formatTripDate(activeTrip);
@@ -354,7 +473,7 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
             Back to Trips
           </button>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <div className="ts-active-header-title-row">
             <h2 style={{ margin: 0, fontSize: '2rem', letterSpacing: '-0.5px', color: 'var(--text-main)' }}>{activeTrip.name}</h2>
             <div style={{
               display: 'inline-flex',
@@ -371,6 +490,33 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               <span>Created on {activeTripFormattedDate}</span>
             </div>
+            
+            <button 
+              onClick={() => {
+                const url = `${window.location.origin}/?invite=${activeTrip.id}`;
+                navigator.clipboard.writeText(url);
+                alert('Invite link copied to clipboard!');
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: 'var(--surface)',
+                color: 'var(--text-main)',
+                border: '1px solid var(--border)',
+                padding: '0.35rem 0.85rem',
+                borderRadius: '100px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+              <span>Copy Invite Link</span>
+            </button>
           </div>
 
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', fontSize: '1.05rem' }}>Manage members and expenses for this trip.</p>
@@ -397,33 +543,49 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
           <div className="dashboard-card glass-card" style={{ padding: '2rem' }}>
-            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ width: '28px', height: '28px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>1</span>
-              Group Members
-            </h3>
-            
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              <input 
-                type="text" 
-                className="ts-input" 
-                placeholder="Enter name (e.g. Alice)" 
-                value={newMember} 
-                onChange={(e) => setNewMember(e.target.value)} 
-                onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                disabled={activeTrip.isSettled}
-              />
-              <button className="ts-btn-primary" onClick={handleAddMember} disabled={activeTrip.isSettled}>Add</button>
+            <div 
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', cursor: window.innerWidth <= 900 ? 'pointer' : 'default' }}
+              onClick={() => {
+                if (window.innerWidth <= 900) setIsMembersExpanded(!isMembersExpanded);
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ width: '28px', height: '28px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>1</span>
+                Group Members
+              </h3>
+              <div style={{ display: window.innerWidth <= 900 ? 'block' : 'none' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isMembersExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }}>
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
             </div>
             
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-              {members.map(m => (
-                <div key={m} className="ts-member-pill">
-                  <div className="ts-avatar">{m.charAt(0).toUpperCase()}</div>
-                  <span style={{ paddingRight: '0.5rem' }}>{m}</span>
+            {isMembersExpanded && (
+              <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+                <div className="ts-member-input-row" style={{ marginBottom: '1.5rem' }}>
+                  <input 
+                    type="text" 
+                    className="ts-input" 
+                    placeholder="Enter name (e.g. Alice)" 
+                    value={newMember} 
+                    onChange={(e) => setNewMember(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+                    disabled={activeTrip.isSettled}
+                  />
+                  <button className="ts-btn-primary" onClick={handleAddMember} disabled={activeTrip.isSettled}>Add</button>
                 </div>
-              ))}
-              {members.length === 0 && <span style={{ color: 'var(--text-muted)' }}>No members yet</span>}
-            </div>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  {members.map(m => (
+                    <div key={m} className="ts-member-pill">
+                      <div className="ts-avatar">{m.charAt(0).toUpperCase()}</div>
+                      <span style={{ paddingRight: '0.5rem' }}>{m}</span>
+                    </div>
+                  ))}
+                  {members.length === 0 && <span style={{ color: 'var(--text-muted)' }}>No members yet</span>}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="dashboard-card glass-card" style={{ padding: '2rem' }}>
@@ -435,7 +597,7 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <input type="text" className="ts-input" placeholder="What was it for? (e.g. Dinner, Taxi)" value={desc} onChange={(e)=>setDesc(e.target.value)} disabled={activeTrip.isSettled} />
               
-              <div style={{ display: 'flex', gap: '1rem' }}>
+              <div className="ts-expense-row">
                 <div style={{ position: 'relative', flex: 1 }}>
                   <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 500 }}>₹</span>
                   <input type="number" className="ts-input" placeholder="0.00" value={amount} onChange={(e)=>setAmount(e.target.value)} style={{ paddingLeft: '2rem' }} disabled={activeTrip.isSettled} />
@@ -492,6 +654,51 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
               }) : (
                 <span style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', padding: '1rem' }}>Add members to see split</span>
               )}
+              
+              {settlementTransactions.length > 0 && (
+                <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '1.5rem' }}>
+                  <h4 style={{ color: 'rgba(255,255,255,0.9)', margin: '0 0 1rem 0', fontSize: '1.05rem' }}>How to settle up</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {settlementTransactions.map((tx, idx) => (
+                      <div key={idx} className="ts-settle-row">
+                        <span style={{ color: '#fca5a5', fontWeight: 600 }}>{tx.from}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>pays</span>
+                        <span style={{ color: '#4ade80', fontWeight: 600 }}>{tx.to}</span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                          {editingSettlementFrom === tx.from && editingSettlementTo === tx.to ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.7)' }}>₹</span>
+                              <input 
+                                type="number" 
+                                value={settlementAmount} 
+                                onChange={(e) => setSettlementAmount(e.target.value)}
+                                style={{ width: '70px', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.3)', outline: 'none', background: 'transparent', color: 'white', fontSize: '0.9rem' }}
+                                autoFocus
+                              />
+                              <button onClick={() => handleRecordPayment(tx.from, tx.to, parseFloat(settlementAmount))} style={{ background: 'var(--primary)', border: 'none', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>Save</button>
+                              <button onClick={() => { setEditingSettlementFrom(null); setEditingSettlementTo(null); }} style={{ background: 'transparent', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: 0 }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <span 
+                              style={{ color: 'white', fontWeight: 700, cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.4)' }}
+                              title="Click to record a partial payment"
+                              onClick={() => {
+                                setEditingSettlementFrom(tx.from);
+                                setEditingSettlementTo(tx.to);
+                                setSettlementAmount(tx.amount.toString());
+                              }}
+                            >
+                              ₹{tx.amount.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -502,7 +709,7 @@ export default function TripSplitter({ splitwiseTrips, setSplitwiseTrips }: Trip
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {expenses.map(exp => (
-                  <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem', background: 'var(--bg-color)', borderRadius: '12px', border: '1px solid var(--border)', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(4px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}>
+                  <div key={exp.id} className="ts-recent-expense-item" onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(4px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <div style={{ width: '40px', height: '40px', background: 'rgba(99,102,241,0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
                         <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
